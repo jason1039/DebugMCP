@@ -422,38 +422,52 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Format debug state as a readable string
+     * Format debug state as a JSON string for structured output
      */
     private formatDebugState(state: DebugState): string {
-        if (!state.sessionActive) {
-            return 'Debug session is not active';
+        const stateObject: {
+            sessionActive: boolean;
+            stackTrace?: string[];
+            breakpoints?: string[];
+            fileFullPath?: string | null;
+            fileName?: string | null;
+            currentLine?: number | null;
+            currentLineContent?: string | null;
+            nextLines?: string[];
+            frameId?: number | null;
+            threadId?: number | null;
+            frameName?: string | null;
+        } = {
+            sessionActive: state.sessionActive,
+        };
+
+        if (state.sessionActive) {
+            // Compact stack trace: "functionName:line" format
+            stateObject.stackTrace = state.stackTrace.map(frame => 
+                `${frame.name}:${frame.line || '?'}`
+            );
+            
+            // Compact breakpoints list: "fileName:line" format
+            const breakpoints = this.executor.getBreakpoints();
+            stateObject.breakpoints = breakpoints
+                .filter((bp): bp is vscode.SourceBreakpoint => bp instanceof vscode.SourceBreakpoint)
+                .map(bp => {
+                    const fileName = bp.location.uri.fsPath.split(/[/\\]/).pop() || 'unknown';
+                    const line = bp.location.range.start.line + 1;
+                    return `${fileName}:${line}`;
+                });
+            
+            stateObject.fileFullPath = state.fileFullPath;
+            stateObject.fileName = state.fileName;
+            stateObject.currentLine = state.currentLine;
+            stateObject.currentLineContent = state.currentLineContent;
+            stateObject.nextLines = state.nextLines;
+            stateObject.frameId = state.frameId;
+            stateObject.threadId = state.threadId;
+            stateObject.frameName = state.frameName;
         }
 
-        let output = 'Debug State:\n==========\n\n';
-        
-        if (state.hasFrameName()) {
-            output += `Frame: ${state.frameName}\n`;
-        }
-        
-        if (state.hasLocationInfo()) {
-            output += `File: ${state.fileName}\n`;
-            output += `Line: ${state.currentLine}\n`;        
-            
-            output += `${state.currentLine}: ${state.currentLineContent}\n`;
-            
-            // Show next few lines for context
-            // if (state.nextLines && state.nextLines.length > 0) {
-            //     output += '\nNext lines:\n';
-            //     state.nextLines.forEach((line, index) => {
-            //         const lineNumber = (state.currentLine || 0) + index + 1;
-            //         output += `   ${lineNumber}: ${line}\n`;
-            //     });
-            // }
-        } else {
-            output += 'No location information available. The session might have stopped or ended\n';
-        }
-                
-        return output;
+        return JSON.stringify(stateObject, null, 2);
     }
     
     /**

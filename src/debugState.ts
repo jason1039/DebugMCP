@@ -1,6 +1,16 @@
 // Copyright (c) Microsoft Corporation.
 
 /**
+ * Represents a single stack frame in the call stack
+ */
+export interface StackFrame {
+    name: string;
+    source?: string;
+    line?: number;
+    column?: number;
+}
+
+/**
  * Represents the current state of a debugging session
  */
 export class DebugState {
@@ -13,6 +23,7 @@ export class DebugState {
     public frameId: number | null;
     public threadId: number | null;
     public frameName: string | null;
+    public stackTrace: StackFrame[];
     // TODO breakpoints
     
     constructor() {
@@ -25,6 +36,7 @@ export class DebugState {
         this.frameId = null;
         this.threadId = null;
         this.frameName = null;
+        this.stackTrace = [];
     }
 
     /**
@@ -40,6 +52,7 @@ export class DebugState {
         this.frameId = null;
         this.threadId = null;
         this.frameName = null;
+        this.stackTrace = [];
     }
 
     /**
@@ -92,6 +105,13 @@ export class DebugState {
     }
 
     /**
+     * Update stack trace
+     */
+    public updateStackTrace(stackTrace: StackFrame[]): void {
+        this.stackTrace = [...stackTrace];
+    }
+
+    /**
      * Check if frame name is available
      */
     public hasFrameName(): boolean {
@@ -112,6 +132,7 @@ export class DebugState {
         cloned.frameId = this.frameId;
         cloned.threadId = this.threadId;
         cloned.frameName = this.frameName;
+        cloned.stackTrace = [...this.stackTrace];
         return cloned;
     }
 }

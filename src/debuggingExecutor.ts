@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 
 import * as vscode from 'vscode';
-import { DebugState } from './debugState';
+import { DebugState, StackFrame } from './debugState';
 
 /**
  * Interface for debugging execution operations
@@ -181,12 +181,16 @@ export class DebuggingExecutor implements IDebuggingExecutor {
                         const currentLine = activeEditor.selection.active.line + 1; // 1-based line number
                         const currentLineContent = activeEditor.document.lineAt(activeEditor.selection.active.line).text.trim();
                         
-                        // Get next lines
+                        // Get next non-empty lines
                         const nextLines = [];
-                        for (let i = 1; i <= numNextLines; i++) {
-                            if (activeEditor.selection.active.line + i < activeEditor.document.lineCount) {
-                                nextLines.push(activeEditor.document.lineAt(activeEditor.selection.active.line + i).text.trim());
+                        let lineOffset = 1;
+                        while (nextLines.length < numNextLines && 
+                               activeEditor.selection.active.line + lineOffset < activeEditor.document.lineCount) {
+                            const lineText = activeEditor.document.lineAt(activeEditor.selection.active.line + lineOffset).text.trim();
+                            if (lineText.length > 0) {
+                                nextLines.push(lineText);
                             }
+                            lineOffset++;
                         }
                         
                         state.updateLocation(
@@ -207,25 +211,37 @@ export class DebuggingExecutor implements IDebuggingExecutor {
     }
 
     /**
-     * Extract frame name from the current stack frame
+     * Extract frame name and stack trace from the current debug session
      */
     private async extractFrameName(session: vscode.DebugSession, frameId: number, state: DebugState): Promise<void> {
         try {
-            // Get stack trace to extract frame name
+            // Get full stack trace (up to 50 frames)
             const stackTraceResponse = await session.customRequest('stackTrace', {
                 threadId: state.threadId,
                 startFrame: 0,
-                levels: 1
+                levels: 50
             });
 
             if (stackTraceResponse?.stackFrames && stackTraceResponse.stackFrames.length > 0) {
+                // Extract frame name from current frame
                 const currentFrame = stackTraceResponse.stackFrames[0];
                 state.updateFrameName(currentFrame.name || null);
+
+                // Build stack trace array
+                const stackTrace: StackFrame[] = stackTraceResponse.stackFrames.map((frame: any) => ({
+                    name: frame.name || 'unknown',
+                    source: frame.source?.path || frame.source?.name || undefined,
+                    line: frame.line || undefined,
+                    column: frame.column || undefined,
+                }));
+
+                state.updateStackTrace(stackTrace);
             }
         } catch (error) {
-            console.log('Unable to extract frame name:', error);
-            // Set empty frame name on error
+            console.log('Unable to extract stack info:', error);
+            // Set empty values on error
             state.updateFrameName(null);
+            state.updateStackTrace([]);
         }
     }
 

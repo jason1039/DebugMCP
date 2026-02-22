@@ -156,8 +156,8 @@ export class AgentConfigurationManager {
             autoApprove: [],
             disabled: false,
             timeout: this.timeoutInSeconds,
-            type: "sse",
-            url: `http://localhost:${this.serverPort}/sse`
+            type: "streamableHttp",
+            url: `http://localhost:${this.serverPort}/mcp`
         };
     }
 
