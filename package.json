@@ -38,6 +38,7 @@
     "AI",
     "Programming Languages"
   ],
+  "extensionDependencies": [],
   "repository": {
     "type": "git",
     "url": "https://github.com/microsoft/DebugMCP.git"

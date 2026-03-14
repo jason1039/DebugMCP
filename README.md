@@ -192,6 +192,50 @@ Configure DebugMCP behavior in VSCode settings:
 | `debugmcp.timeoutInSeconds` | `180` | Timeout for debugging operations |
 
 
+## FAQ
+
+<details>
+<summary><b>Which AI assistants are supported?</b></summary>
+
+DebugMCP works with any MCP-compatible AI assistant, including **GitHub Copilot**, **Cline**, **Cursor**, **Roo Code**, **Windsurf**, and others. If your assistant supports the Model Context Protocol, it can use DebugMCP.
+</details>
+
+<details>
+<summary><b>Does it work with VS Code Remote SSH / Codespaces / WSL?</b></summary>
+
+Yes. DebugMCP runs as a VS Code extension with `extensionKind: workspace`, so it activates in the remote environment where your code lives. The MCP server runs on `localhost` within that remote context.
+</details>
+
+<details>
+<summary><b>Do I need to configure launch.json?</b></summary>
+
+No. DebugMCP automatically generates appropriate debug configurations based on the file's language/extension. If you have a `launch.json`, it will use matching configurations from there. You can also specify a configuration by name using the `configurationName` parameter.
+</details>
+
+<details>
+<summary><b>Is my code sent to any external service?</b></summary>
+
+No. DebugMCP runs 100% locally. The MCP server runs on `localhost`, and no code, variables, or debug data is sent to any external service. The AI assistant communicates with the MCP server entirely within your local machine.
+</details>
+
+<details>
+<summary><b>What if port 3001 is already in use?</b></summary>
+
+Change the port in VS Code settings: `"debugmcp.serverPort": 3002` (or any available port). Then update your AI assistant's MCP configuration to use the new port.
+</details>
+
+<details>
+<summary><b>Can I debug unit tests?</b></summary>
+
+Yes. Pass the `testName` parameter to `start_debugging` to debug a specific test method. DebugMCP will configure the debug session to run and pause at breakpoints within that test.
+</details>
+
+<details>
+<summary><b>Why is my AI assistant not using the debug tools?</b></summary>
+
+Make sure DebugMCP is registered in your AI assistant's MCP settings. The extension should auto-detect and offer to register itself. If not, see the [Manual MCP Server Registration](#manual-mcp-server-registration-optional) section. Also enable auto-approval for DebugMCP tools for a smoother workflow.
+</details>
+
 ## Troubleshooting
 
 ### Common Issues
@@ -270,6 +314,16 @@ trademarks or logos is subject to and must follow
 [Microsoft's Trademark & Brand Guidelines](https://www.microsoft.com/en-us/legal/intellectualproperty/trademarks/usage/general).
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
+
+## ⭐ Star History
+
+<a href="https://star-history.com/#microsoft/DebugMCP&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=microsoft/DebugMCP&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=microsoft/DebugMCP&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=microsoft/DebugMCP&type=Date" />
+ </picture>
+</a>
 
 ## License
 
