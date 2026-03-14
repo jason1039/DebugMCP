@@ -6,7 +6,7 @@ Let AI agents debug your code inside VS Code — set breakpoints, step through e
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.104.0+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-1.0.2-green.svg)](https://github.com/microsoft/DebugMCP)
+[![Version](https://img.shields.io/badge/version-1.0.8-green.svg)](https://github.com/microsoft/DebugMCP)
 [![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-Install-blue.svg)](https://marketplace.visualstudio.com/items?itemName=ozzafar.debugmcpextension)
 
 > Watch DebugMCP in action — your AI assistant autonomously sets breakpoints, steps through code, and inspects variables directly in VS Code.
@@ -38,21 +38,24 @@ DebugMCP is an MCP server that gives AI coding agents full control over the VS C
 
 ### 🔧 Tools
 
-| Tool | Description | Parameters | Example Usage |
-|------|-------------|------------|---------------|
-| **start_debugging** | Start a debug session for a source code file | `filePath` (required)<br>`workingDirectory` (optional)<br>`configurationName` (optional) | Start debugging a Python script |
-| **stop_debugging** | Stop the current debug session | None | End the current debugging session |
-| **step_over** | Execute the next line (step over function calls) | None | Move to next line without entering functions |
-| **step_into** | Step into function calls | None | Enter function calls to debug them |
-| **step_out** | Step out of the current function | None | Exit current function and return to caller |
-| **continue_execution** | Continue until next breakpoint | None | Resume execution until hitting a breakpoint |
-| **restart_debugging** | Restart the current debug session | None | Restart debugging from the beginning |
-| **add_breakpoint** | Add a breakpoint at a specific line | `filePath` (required)<br>`line` (required) | Set breakpoint at line 25 of main.py |
-| **remove_breakpoint** | Remove a breakpoint from a specific line | `filePath` (required)<br>`line` (required) | Remove breakpoint from line 25 |
-| **list_breakpoints** | List all active breakpoints | None | Show all currently set breakpoints |
-| **get_debug_status** | Get current debug session status | None | Check if debugging session is active |
-| **get_variables** | Get variables and their values | `scope` (optional: 'local', 'global', 'all') | Inspect local variables |
-| **evaluate_expression** | Evaluate an expression in debug context | `expression` (required) | Evaluate `user.name` or `len(items)` |
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| **get_debug_instructions** | Get the debugging guide with best practices and workflow instructions | None |
+| **start_debugging** | Start a debug session for a source code file | `fileFullPath` (required)<br>`workingDirectory` (required)<br>`testName` (optional)<br>`configurationName` (optional) |
+| **stop_debugging** | Stop the current debug session | None |
+| **step_over** | Execute the next line (step over function calls) | None |
+| **step_into** | Step into function calls | None |
+| **step_out** | Step out of the current function | None |
+| **continue_execution** | Continue until next breakpoint | None |
+| **restart_debugging** | Restart the current debug session | None |
+| **add_breakpoint** | Add a breakpoint at a specific line | `fileFullPath` (required)<br>`lineContent` (required) |
+| **remove_breakpoint** | Remove a breakpoint from a specific line | `fileFullPath` (required)<br>`line` (required) |
+| **clear_all_breakpoints** | Remove all breakpoints at once | None |
+| **list_breakpoints** | List all active breakpoints | None |
+| **get_variables_values** | Get variables and their values at current execution point | `scope` (optional: 'local', 'global', 'all') |
+| **evaluate_expression** | Evaluate an expression in debug context | `expression` (required) |
+
+> **Note:** The `get_debug_instructions` tool is particularly useful for AI clients like GitHub Copilot that don't support MCP resources. It provides the same debugging guide content that is also available as an MCP resource.
 
 ### 🎯 Debugging Best Practices
 
@@ -111,7 +114,7 @@ DebugMCP supports debugging for the following languages with their respective VS
 | **Python** | [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python) | `.py` | ✅ Fully Supported |
 | **JavaScript/TypeScript** | Built-in / [JS Debugger](https://marketplace.visualstudio.com/items?itemName=ms-vscode.js-debug) | `.js`, `.ts`, `.jsx`, `.tsx` | ✅ Fully Supported |
 | **Java** | [Extension Pack for Java](https://marketplace.visualstudio.com/items?itemName=vscjava.vscode-java-pack) | `.java` | ✅ Fully Supported |
-| **C/C++** | [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools) | `.c`, `.cpp`, `.h`, `.hpp` | ✅ Fully Supported |
+| **C/C++** | [C/C++](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools) | `.c`, `.cpp`, `.cc` | ✅ Fully Supported |
 | **Go** | [Go](https://marketplace.visualstudio.com/items?itemName=golang.Go) | `.go` | ✅ Fully Supported |
 | **Rust** | [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) | `.rs` | ✅ Fully Supported |
 | **PHP** | [PHP Debug](https://marketplace.visualstudio.com/items?itemName=xdebug.php-debug) | `.php` | ✅ Fully Supported |
@@ -126,14 +129,16 @@ The extension runs an MCP server automatically. It will pop up a message to auto
 
 ### Manual MCP Server Registration (Optional)
 
+> **🔄 Auto-Migration**: If you previously configured DebugMCP with SSE transport, the extension will automatically migrate your configuration to the new Streamable HTTP transport on activation.
+
 #### Cline
 Add to your Cline settings or `cline_mcp_settings.json`:
 ```json
 {
   "mcpServers": {
     "debugmcp": {
-      "transport": "sse",
-      "url": "http://localhost:3001/sse",
+      "type": "streamableHttp",
+      "url": "http://localhost:3001/mcp",
       "description": "DebugMCP - AI-powered debugging assistant"
     }
   }
@@ -141,30 +146,30 @@ Add to your Cline settings or `cline_mcp_settings.json`:
 ```
 
 #### GitHub Copilot
-Add to your Copilot workspace settings (`.vscode/settings.json`):
-```json
-{
-  "github.copilot.mcp.servers": {
-    "debugmcp": {
-      "type": "sse",
-      "url": "http://localhost:3001/sse",
-      "description": "DebugMCP - Multi-language debugging support"
-    }
-  }
-}
-```
-
-#### Roo Code
-Add to Roo's MCP settings:
+Add to your VS Code settings (`settings.json`):
 ```json
 {
   "mcp": {
     "servers": {
       "debugmcp": {
-        "type": "sse",
-        "url": "http://localhost:3001/sse",
-        "description": "DebugMCP - Debugging tools for AI assistants"
+        "type": "http",
+        "url": "http://localhost:3001/mcp",
+        "description": "DebugMCP - Multi-language debugging support"
       }
+    }
+  }
+}
+```
+
+#### Cursor
+Add to Cursor's MCP settings:
+```json
+{
+  "mcpServers": {
+    "debugmcp": {
+      "type": "streamableHttp",
+      "url": "http://localhost:3001/mcp",
+      "description": "DebugMCP - Debugging tools for AI assistants"
     }
   }
 }
