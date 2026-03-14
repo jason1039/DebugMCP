@@ -1,8 +1,8 @@
 {
   "name": "debugmcpextension",
   "displayName": "DebugMCP",
-  "description": "A VSCode extension that provides comprehensive multi-language debugging capabilities and automatically exposes itself as an MCP (Model Context Protocol) server for seamless integration with AI assistants.",
-  "version": "1.0.6",
+  "description": "Let AI agents debug your code inside VS Code — breakpoints, step-through execution, variable inspection, and expression evaluation. Automatically exposes itself as an MCP (Model Context Protocol) server for seamless integration with AI assistants.",
+  "version": "1.0.8",
   "publisher": "ozzafar",
   "author": {
     "name": "Oz Zafar",
@@ -16,11 +16,18 @@
   "keywords": [
     "debug",
     "mcp",
-    "model context protocol",
     "debugging",
     "ai",
     "microsoft",
-    "vscode-extension"
+    "vscode-extension",
+    "ai debugging",
+    "copilot debugging",
+    "llm debugging",
+    "model context protocol",
+    "breakpoints",
+    "debugger",
+    "ai agent",
+    "copilot"
   ],
   "engines": {
     "vscode": "^1.104.0"
@@ -29,7 +36,7 @@
   "categories": [
     "Debuggers",
     "AI",
-    "Other"
+    "Programming Languages"
   ],
   "repository": {
     "type": "git",

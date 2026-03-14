@@ -1,6 +1,6 @@
-# DebugMCP - Empowering AI Agents with Multi-Language Debugging Capabilities
+# DebugMCP (MCP Server) - Empowering AI Agents with Multi-Language Debugging Capabilities
 
-A VSCode extension that provides comprehensive multi-language debugging capabilities and automatically exposes itself as an MCP (Model Context Protocol) server for seamless integration with AI assistants.
+Let AI agents debug your code inside VS Code — set breakpoints, step through execution, inspect variables, and evaluate expressions. Works with **GitHub Copilot**, **Cline**, **Cursor**, and any MCP-compatible assistant. Supports **Python**, **JavaScript/TypeScript**, **Java**, **C#**, **C++**, **Go**, **Rust**, **PHP**, and **Ruby**.
 
 > **📢 Beta Version Notice**: This is a beta version of DebugMCP maintained by [ozzafar@microsoft.com](mailto:ozzafar@microsoft.com) and [orbarila@microsoft.com](mailto:orbarila@microsoft.com). We welcome feedback and contributions to help improve this extension.
 
@@ -8,6 +8,12 @@ A VSCode extension that provides comprehensive multi-language debugging capabili
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.104.0+-blue.svg)](https://code.visualstudio.com/)
 [![Version](https://img.shields.io/badge/version-1.0.2-green.svg)](https://github.com/microsoft/DebugMCP)
 [![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-Install-blue.svg)](https://marketplace.visualstudio.com/items?itemName=ozzafar.debugmcpextension)
+
+> Watch DebugMCP in action — your AI assistant autonomously sets breakpoints, steps through code, and inspects variables directly in VS Code.
+
+<p align="center">
+  <img src="assets/DebugMCP.webp" alt="DebugMCP Demo" width="800">
+</p>
 
 ## 🚀 Quick Install
 
@@ -26,7 +32,7 @@ A VSCode extension that provides comprehensive multi-language debugging capabili
 
 ## Overview
 
-DebugMCP bridges the gap between professional debugging and AI-assisted development by providing a powerful debugging interface that AI assistants can use to help you identify and fix issues in your code. DebugMCP enables AI assistants to perform sophisticated debugging operations on your behalf.
+DebugMCP is an MCP server that gives AI coding agents full control over the VS Code debugger. Instead of reading logs or guessing, your AI assistant can autonomously set breakpoints, launch debug sessions, step through code line by line, inspect variable values, and evaluate expressions — just like a human developer would. It runs 100% locally, requires zero configuration, and works out of the box with any MCP-compatible AI assistant.
 
 ## Features
 
@@ -194,6 +200,12 @@ Configure DebugMCP behavior in VSCode settings:
 
 ## How It Works
 
+### Architecture
+
+<p align="center">
+  <img src="assets/architecture.png" alt="DebugMCP Architecture" width="800">
+</p>
+
 ### Launch Configuration Integration
 The extension handles debug configurations intelligently:
 
@@ -217,15 +229,6 @@ The extension handles debug configurations intelligently:
   - **PHP**: [PHP Debug extension](vscode:extension/xdebug.php-debug)
   - **Ruby**: [Ruby extension](vscode:extension/rebornix.ruby) with debug support
 - MCP-compatible AI assistant (Copilot, Cline, Roo..)
-
-## Demo
-
-<video width="800" controls>
-  <source src="assets/DebugMCP.mp4" type="video/mp4">
-  Your browser does not support the video tag. <a href="assets/DebugMCP.mp4">Download the demo video</a>
-</video>
-
-> Watch to see DebugMCP in action, showing the integration between the VSCode extension and an AI assistant using the MCP protocol.
 
 ## Development
 
