@@ -7,32 +7,59 @@ import { IDebuggingExecutor } from './debuggingExecutor';
 import { logger } from './utils/logger';
 
 /**
- * Interface for debugging handler operations
+ * 暴露給 MCP server 的高階 debugger operations。
+ *
+ * 實作會將已驗證的 MCP tool arguments 轉成 debugger actions，在需要時等待
+ * state transitions，並回傳格式化後適合 AI agent 消費的字串。
  */
 export interface IDebuggingHandler {
+    /** 為 source file 或 test target 啟動 debug session。 */
     handleStartDebugging(args: { fileFullPath: string; workingDirectory: string; testName?: string; configurationName?: string }): Promise<string>;
+    /** 若 active debug session 存在則停止它。 */
     handleStopDebugging(): Promise<string>;
+    /** 執行 step-over operation 並回傳結果 debug state。 */
     handleStepOver(): Promise<string>;
+    /** 執行 step-into operation 並回傳結果 debug state。 */
     handleStepInto(): Promise<string>;
+    /** 執行 step-out operation 並回傳結果 debug state。 */
     handleStepOut(): Promise<string>;
+    /** 繼續執行直到下一個 stop event 或 session 完成。 */
     handleContinue(): Promise<string>;
+    /** 重新啟動 active debug session。 */
     handleRestart(): Promise<string>;
+    /** 對所有包含指定 source text 的行新增 breakpoints。 */
     handleAddBreakpoint(args: { fileFullPath: string; lineContent: string }): Promise<string>;
+    /** 移除指定 1-based 行號上的 breakpoint。 */
     handleRemoveBreakpoint(args: { fileFullPath: string; line: number }): Promise<string>;
+    /** 清除所有 VS Code breakpoints。 */
     handleClearAllBreakpoints(): Promise<string>;
+    /** 回傳格式化後的 active breakpoints 清單。 */
     handleListBreakpoints(): Promise<string>;
+    /** 回傳 active stack frame 中的 variables。 */
     handleGetVariables(args: { scope?: 'local' | 'global' | 'all' }): Promise<string>;
+    /** 在 active stack frame 中評估 expression。 */
     handleEvaluateExpression(args: { expression: string }): Promise<string>;
 }
 
 /**
- * Handles debugging operations using the executor and configuration manager
+ * 協調 MCP tools 與低階 VS Code APIs 之間的 debugger actions。
+ *
+ * 此 class 負責 operation sequencing、readiness checks、before/after state
+ * comparison、timeout handling 與 response formatting。它依賴 execution 與
+ * configuration interfaces，讓 tests 可以將 orchestration logic 與 VS Code 隔離。
  */
 export class DebuggingHandler implements IDebuggingHandler {
     private readonly numNextLines: number = 3;
-    private readonly executionDelay: number = 300; // ms to wait for debugger updates
+    private readonly executionDelay: number = 300; // 等待 debugger updates 的毫秒數。
     private readonly timeoutInSeconds: number;
 
+    /**
+     * 建立具備 injected collaborators 的 debugging handler。
+     *
+     * @param executor VS Code debug commands 與 DAP requests 的低階 adapter。
+     * @param configManager debug configuration resolver。
+     * @param timeoutInSeconds 等待 debug session readiness/state changes 的最長秒數。
+     */
     constructor(
         private readonly executor: IDebuggingExecutor,
         private readonly configManager: IDebugConfigurationManager,
@@ -42,7 +69,14 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Start a debugging session
+     * 啟動 debugging session 並回傳初始狀態。
+     *
+     * 此方法會提示或解析 configuration、啟動 session、等待 VS Code 回報可用的
+     * execution location，然後回傳目前 DebugState JSON。
+     *
+     * @param args file path、working directory、optional test name 與 optional launch configuration name。
+     * @returns 帶有目前 debug state 的 success message。
+     * @throws Error 當 configuration resolution、session startup 或 readiness waiting 失敗時丟出。
      */
     public async handleStartDebugging(args: { 
         fileFullPath: string; 
@@ -55,7 +89,7 @@ export class DebuggingHandler implements IDebuggingHandler {
         try {            
             let selectedConfigName = configurationName ?? await this.configManager.promptForConfiguration(workingDirectory);
             
-            // Get debug configuration from launch.json or create default
+            // 從 launch.json 取得 debug configuration，或建立 default configuration。
             const debugConfig = await this.configManager.getDebugConfig(
                 workingDirectory, 
                 fileFullPath, 
@@ -65,14 +99,14 @@ export class DebuggingHandler implements IDebuggingHandler {
 
             const started = await this.executor.startDebugging(workingDirectory, debugConfig);
             if (started) {
-                // Wait for debug session to become active using exponential backoff
+                // 使用 exponential backoff 等待 debug session 變成 active。
                 const sessionActive = await this.waitForActiveDebugSession();
                 
                 if (!sessionActive) {
                     throw new Error('Debug session started but failed to become active within timeout period');
                 }
                 
-                // return also the current state
+                // 同時回傳目前狀態。
                 const configInfo = selectedConfigName ? ` using configuration '${selectedConfigName}'` : ' with default configuration';
                 const testInfo = testName ? ` (test: ${testName})` : '';
                 const currentState = await this.executor.getCurrentDebugState(this.numNextLines);
@@ -86,7 +120,10 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Stop the current debugging session
+     * 停止目前 debugging session。
+     *
+     * @returns status message；停止 session 時會包含 root-cause analysis checkpoint。
+     * @throws Error 當 VS Code 無法停止 active session 時丟出。
      */
     public async handleStopDebugging(): Promise<string> {
         try {
@@ -96,7 +133,7 @@ export class DebuggingHandler implements IDebuggingHandler {
 
             await this.executor.stopDebugging();
 
-            // Add drill-down reminder
+            // 加入深入追查提醒。
             return 'Debug session stopped successfully\n\n' + this.getRootCauseAnalysisCheckpointMessage();
         } catch (error) {
             throw new Error(`Error stopping debug session: ${error}`);
@@ -104,7 +141,10 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Clear all breakpoints
+     * 移除目前註冊在 VS Code 中的所有 breakpoints。
+     *
+     * @returns 描述 breakpoints 是否已清除的 message。
+     * @throws Error 當 breakpoint removal 失敗時丟出。
      */
     public async handleClearAllBreakpoints(): Promise<string> {
         try {
@@ -122,7 +162,14 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Execute step over command(s)
+     * 執行 step-over command 並回傳結果 debugger state。
+     *
+     * optional args parameter 目前只存在於 method shape，implementation 與 MCP
+     * schema 尚未使用。
+     *
+     * @param args 未來可用於 multi-step execution 的 optional extension point。
+     * @returns meaningful state change 或 timeout 後的 DebugState JSON。
+     * @throws Error 當沒有 ready active session 或 command 失敗時丟出。
      */
     public async handleStepOver(args?: { steps?: number }): Promise<string> {
         try {
@@ -130,12 +177,12 @@ export class DebuggingHandler implements IDebuggingHandler {
                 throw new Error('Debug session is not ready. Please wait for initialization to complete.');
             }
 
-            // Get the state before executing the command
+            // 執行 command 前先取得 state。
             const beforeState = await this.executor.getCurrentDebugState(this.numNextLines);
 
             await this.executor.stepOver();
             
-            // Wait for debugger state to change
+            // 等待 debugger state 改變。
             const afterState = await this.waitForStateChange(beforeState);
 
             return afterState.toString();
@@ -145,7 +192,10 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Execute step into command
+     * 執行 step-into command 並回傳結果 debugger state。
+     *
+     * @returns meaningful state change 或 timeout 後的 DebugState JSON。
+     * @throws Error 當沒有 ready active session 或 command 失敗時丟出。
      */
     public async handleStepInto(): Promise<string> {
         try {
@@ -153,12 +203,12 @@ export class DebuggingHandler implements IDebuggingHandler {
                 throw new Error('Debug session is not ready. Please wait for initialization to complete.');
             }
 
-            // Get the state before executing the command
+            // 執行 command 前先取得 state。
             const beforeState = await this.executor.getCurrentDebugState(this.numNextLines);
 
             await this.executor.stepInto();
             
-            // Wait for debugger state to change
+            // 等待 debugger state 改變。
             const afterState = await this.waitForStateChange(beforeState);
             
             return afterState.toString();
@@ -168,7 +218,10 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Execute step out command
+     * 執行 step-out command 並回傳結果 debugger state。
+     *
+     * @returns meaningful state change 或 timeout 後的 DebugState JSON。
+     * @throws Error 當沒有 ready active session 或 command 失敗時丟出。
      */
     public async handleStepOut(): Promise<string> {
         try {
@@ -176,12 +229,12 @@ export class DebuggingHandler implements IDebuggingHandler {
                 throw new Error('Debug session is not ready. Please wait for initialization to complete.');
             }
 
-            // Get the state before executing the command
+            // 執行 command 前先取得 state。
             const beforeState = await this.executor.getCurrentDebugState(this.numNextLines);
 
             await this.executor.stepOut();
             
-            // Wait for debugger state to change
+            // 等待 debugger state 改變。
             const afterState = await this.waitForStateChange(beforeState);
             
             return afterState.toString();
@@ -191,7 +244,10 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Continue execution
+     * 繼續執行程式，直到 debugger 再次停止或 session 結束。
+     *
+     * @returns meaningful state change 或 timeout 後的 DebugState JSON。
+     * @throws Error 當沒有 ready active session 或 command 失敗時丟出。
      */
     public async handleContinue(): Promise<string> {
         try {
@@ -199,12 +255,12 @@ export class DebuggingHandler implements IDebuggingHandler {
                 throw new Error('Debug session is not ready. Please wait for initialization to complete.');
             }
 
-            // Get the state before executing the command
+            // 執行 command 前先取得 state。
             const beforeState = await this.executor.getCurrentDebugState(this.numNextLines);
 
             await this.executor.continue();
             
-            // Wait for debugger state to change
+            // 等待 debugger state 改變。
             const afterState = await this.waitForStateChange(beforeState);
             
             return afterState.toString();
@@ -214,7 +270,10 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Restart the debugging session
+     * 重新啟動 active debugging session。
+     *
+     * @returns restart command 發出後的 status message。
+     * @throws Error 當 active session 不存在或 restart 失敗時丟出。
      */
     public async handleRestart(): Promise<string> {
         try {
@@ -224,7 +283,7 @@ export class DebuggingHandler implements IDebuggingHandler {
 
             await this.executor.restart();
             
-            // Wait for debugger to restart
+            // 等待 debugger restart。
             await new Promise(resolve => setTimeout(resolve, this.executionDelay));
 
             return 'Debug session restarted successfully';
@@ -234,13 +293,20 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Add a breakpoint at specified location
+     * 對所有包含指定 source text 的行新增 breakpoints。
+     *
+     * MCP tool 接受 line content，因為 AI agents 通常比起精準行號更可靠地引用
+     * code text。若文字出現多次，每個 matching line 都會收到 breakpoint。
+     *
+     * @param args target file 與要搜尋的 source text。
+     * @returns 列出已新增 breakpoints 行號的 message。
+     * @throws Error 當找不到文字或 VS Code 無法新增 breakpoint 時丟出。
      */
     public async handleAddBreakpoint(args: { fileFullPath: string; lineContent: string }): Promise<string> {
         const { fileFullPath, lineContent } = args;
         
         try {
-            // Find the line number containing the line content
+            // 找出包含 line content 的行號。
             const document = await vscode.workspace.openTextDocument(vscode.Uri.file(fileFullPath));
             const text = document.getText();
             const lines = text.split(/\r?\n/);
@@ -248,7 +314,7 @@ export class DebuggingHandler implements IDebuggingHandler {
             
             for (let i = 0; i < lines.length; i++) {
                 if (lines[i].includes(lineContent)) {
-                    matchingLineNumbers.push(i + 1); // Convert to 1-based line numbers
+                    matchingLineNumbers.push(i + 1); // 轉成 1-based 行號。
                 }
             }
             
@@ -258,7 +324,7 @@ export class DebuggingHandler implements IDebuggingHandler {
             
             const uri = vscode.Uri.file(fileFullPath);
             
-            // Add breakpoints to all matching lines
+            // 對所有 matching lines 新增 breakpoints。
             for (const lineNumber of matchingLineNumbers) {
                 await this.executor.addBreakpoint(uri, lineNumber);
             }
@@ -275,7 +341,11 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Remove a breakpoint from specified location
+     * 移除指定 1-based source line 上的 breakpoint。
+     *
+     * @param args target file 與 1-based 行號。
+     * @returns 描述 breakpoint 是否已移除的 message。
+     * @throws Error 當 breakpoint lookup 或 removal 失敗時丟出。
      */
     public async handleRemoveBreakpoint(args: { fileFullPath: string; line: number }): Promise<string> {
         const { fileFullPath, line } = args;
@@ -283,7 +353,7 @@ export class DebuggingHandler implements IDebuggingHandler {
         try {
             const uri = vscode.Uri.file(fileFullPath);
             
-            // Check if breakpoint exists at this location
+            // 檢查此位置是否存在 breakpoint。
             const breakpoints = this.executor.getBreakpoints();
             const existingBreakpoint = breakpoints.find(bp => {
                 if (bp instanceof vscode.SourceBreakpoint) {
@@ -305,7 +375,10 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * List all active breakpoints
+     * 回傳所有 active VS Code breakpoints 的格式化清單。
+     *
+     * @returns human-readable breakpoint list 或 empty-state message。
+     * @throws Error 當 breakpoint enumeration 失敗時丟出。
      */
     public async handleListBreakpoints(): Promise<string> {
         try {
@@ -333,7 +406,11 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Get variables from current debug context
+     * 從目前選取的 stack frame 取得 variables。
+     *
+     * @param args optional scope filter：local、global 或 all。
+     * @returns 格式化後的 variable scopes 與 variable values。
+     * @throws Error 當沒有可用 paused stack frame 或 DAP variable retrieval 失敗時丟出。
      */
     public async handleGetVariables(args: { scope?: 'local' | 'global' | 'all' }): Promise<string> {
         const { scope = 'all' } = args;
@@ -383,7 +460,11 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Evaluate an expression in current debug context
+     * 在目前選取的 stack frame 中評估 expression。
+     *
+     * @param args target program 語言中的 expression string。
+     * @returns 格式化後的 expression result 與 optional result type。
+     * @throws Error 當沒有可用 paused stack frame 或 DAP evaluation 失敗時丟出。
      */
     public async handleEvaluateExpression(args: { expression: string }): Promise<string> {
         const { expression } = args;
@@ -417,25 +498,34 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * Get current debug state
+     * 取得目前 debug state snapshot。
+     *
+     * @returns 由 executor 填入資料的 DebugState。
      */
     public async getCurrentDebugState(): Promise<DebugState> {
         return await this.executor.getCurrentDebugState(this.numNextLines);
     }
 
     /**
-     * Check if debugging session is active
+     * 判斷 debugger 是否具有 active 且 ready 的 session。
+     *
+     * @returns 當 executor 回報具有 location info 的 active session 時回傳 true。
      */
     public async isDebuggingActive(): Promise<boolean> {
         return await this.executor.hasActiveSession();
     }
 
     /**
-     * Wait for debug session to become active using exponential backoff starting from 1 second
+     * 等待直到 VS Code 暴露具有 source location 的 active debug session。
+     *
+     * polling 使用 exponential backoff 與 jitter，並在設定的 operation timeout
+     * 後停止。
+     *
+     * @returns 當 session 在 timeout 前變成 ready 時回傳 true。
      */
     private async waitForActiveDebugSession(): Promise<boolean> {
-        const baseDelay = 1000; // Start with 1 second
-        const maxDelay = 10000; // Cap at 10 seconds
+        const baseDelay = 1000; // 從 1 秒開始。
+        const maxDelay = 10000; // 上限為 10 秒。
         
         const startTime = Date.now();
         let attempt = 0;
@@ -448,23 +538,29 @@ export class DebuggingHandler implements IDebuggingHandler {
             
             logger.info(`[Attempt ${attempt + 1}] Waiting for debug session to become active...`);
 
-            // Calculate delay using exponential backoff with jitter
+            // 使用 exponential backoff 與 jitter 計算 delay。
             const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-            const jitteredDelay = delay + Math.random() * 200; // Add up to 200ms jitter
+            const jitteredDelay = delay + Math.random() * 200; // 最多加入 200ms jitter。
             
             await new Promise(resolve => setTimeout(resolve, jitteredDelay));
             attempt++;
         }
         
-        return false; // Timeout reached
+        return false; // 已達 timeout。
     }
 
     /**
-     * Wait for debugger state to change from the initial state using exponential backoff
+     * 等待 command 之後的 debugger state 改變。
+     *
+     * command 可能需要時間更新 VS Code 的 active frame/editor。此方法會持續
+     * polling，直到觀察到 meaningful change、session 結束或 operation timeout。
+     *
+     * @param beforeState debug command 前立即擷取的 state。
+     * @returns updated state；若達 timeout 則回傳 latest state。
      */
     private async waitForStateChange(beforeState: DebugState): Promise<DebugState> {
-        const baseDelay = 1000; // Start with 1 second
-        const maxDelay = 1000; // Cap at 1 second
+        const baseDelay = 1000; // 從 1 秒開始。
+        const maxDelay = 1000; // 上限為 1 秒。
         const startTime = Date.now();
         let attempt = 0;
                 
@@ -475,76 +571,86 @@ export class DebuggingHandler implements IDebuggingHandler {
                 return currentState;
             }
             
-            // If session ended, return immediately
+            // 若 session 已結束，立即回傳。
             if (!currentState.sessionActive) {
                 return currentState;
             }
             
             logger.info(`[Attempt ${attempt + 1}] Waiting for debugger state to change...`);
 
-            // Calculate delay using exponential backoff with jitter (same as waitForActiveDebugSession)
+            // 使用 exponential backoff 與 jitter 計算 delay，與 waitForActiveDebugSession 相同。
             const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-            const jitteredDelay = delay + Math.random() * 200; // Add up to 200ms jitter
+            const jitteredDelay = delay + Math.random() * 200; // 最多加入 200ms jitter。
 
             await new Promise(resolve => setTimeout(resolve, jitteredDelay));
             attempt++;
         }
         
-        // If we timeout, return the current state (might be unchanged)
+        // 若達 timeout，回傳目前 state（可能未改變）。
         logger.info('State change detection timed out, returning current state');
         return await this.executor.getCurrentDebugState(this.numNextLines);
     }
 
     /**
-     * Determine if the debugger state has meaningfully changed
+     * 判斷兩個 debug states 是否有 agents 應該觀察到的差異。
+     *
+     * location、frame identity、frame name 與 session active status 都算
+     * meaningful changes。若先前已有 location，後續短暫出現 active 但無 location
+     * 的 state，會被忽略以避免回報不完整更新。
+     *
+     * @param beforeState operation 前擷取的 state。
+     * @param afterState operation 後擷取的 candidate state。
+     * @returns 當 after state 應被視為 changed 並回傳時為 true。
      */
     private hasStateChanged(beforeState: DebugState, afterState: DebugState): boolean {
         if (beforeState.hasLocationInfo() && !afterState.hasLocationInfo() && afterState.sessionActive) {
             return false;
         }
 
-        // If session status changed, that's a meaningful change
+        // session status 改變就是 meaningful change。
         if (beforeState.sessionActive !== afterState.sessionActive) {
             return true;
         }
         
-        // If session is no longer active, that's a change
+        // session 不再 active 也是 change。
         if (!afterState.sessionActive) {
             return true;
         }
         
-        // If either state lacks location info, compare what we can
+        // 若任一 state 缺少 location info，就比較可比較的部分。
         if (!beforeState.hasLocationInfo() || !afterState.hasLocationInfo()) {
-            // If one has location info and the other doesn't, that's a change
+            // 若一方有 location info 而另一方沒有，這就是 change。
             return beforeState.hasLocationInfo() !== afterState.hasLocationInfo();
         }
         
-        // Compare file paths - if we moved to a different file, that's a change
+        // 比較 file paths；若移動到不同檔案就是 change。
         if (beforeState.fileFullPath !== afterState.fileFullPath) {
             return true;
         }
         
-        // Compare line numbers - if we moved to a different line, that's a change
+        // 比較 line numbers；若移動到不同行就是 change。
         if (beforeState.currentLine !== afterState.currentLine) {
             return true;
         }
         
-        // Compare frame names - if we moved to a different function/method, that's a change
+        // 比較 frame names；若移動到不同 function/method 就是 change。
         if (beforeState.frameName !== afterState.frameName) {
             return true;
         }
         
-        // Compare frame IDs - internal frame change
+        // 比較 frame IDs；這代表 internal frame change。
         if (beforeState.frameId !== afterState.frameId) {
             return true;
         }
         
-        // If we get here, no meaningful change was detected
+        // 走到這裡表示沒有偵測到 meaningful change。
         return false;
     }
 
     /**
-     * Get the universal drill-down reminder message
+     * 建立 debugging 停止時附加的 root-cause analysis reminder。
+     *
+     * @returns 鼓勵 agents 區分 symptoms 與 causes 的 Markdown reminder。
      */
     private getRootCauseAnalysisCheckpointMessage(): string {
         return `⚠️ **ROOT CAUSE ANALYSIS CHECKPOINT**

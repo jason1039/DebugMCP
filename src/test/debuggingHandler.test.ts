@@ -5,7 +5,7 @@ import { DebugState } from '../debugState';
 import { DebuggingHandler } from '../debuggingHandler';
 
 /**
- * Test suite for DebuggingHandler state change detection
+ * DebuggingHandler state change detection 的測試套件。
  */
 suite('DebuggingHandler State Change Detection', () => {
     
@@ -21,7 +21,7 @@ suite('DebuggingHandler State Change Detection', () => {
         const afterState = beforeState.clone();
         afterState.updateLocation('/test/file.js', 'file.js', 11, 'let y = 10;', []);
         
-        // Use reflection to access the private method for testing
+        // 使用 reflection 存取 private method 以便測試。
         const hasStateChanged = (handler as any).hasStateChanged(beforeState, afterState);
         
         assert.strictEqual(hasStateChanged, true);
@@ -95,7 +95,7 @@ suite('DebuggingHandler State Change Detection', () => {
         
         const beforeState = new DebugState();
         beforeState.sessionActive = true;
-        // No location info
+        // 沒有 location info。
         
         const afterState = new DebugState();
         afterState.sessionActive = true;
