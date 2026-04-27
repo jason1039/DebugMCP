@@ -209,6 +209,18 @@ export class DebugMCPServer {
             return { content: [{ type: 'text' as const, text: result }] };
         });
 
+        // 取得目前 debug state 的 tool（不阻塞、不要求 paused）。
+        this.mcpServer!.registerTool('get_debug_state', {
+            description: 'Get the current debug session state immediately, without blocking. ' +
+                'Returns whether a debug session is attached, and if execution is paused, ' +
+                'the current file, line, frame, and stack trace. ' +
+                'Use this to poll status when running a long-running process (e.g. API server) ' +
+                'that may pause at a breakpoint later.',
+        }, async () => {
+            const result = await this.debuggingHandler.handleGetDebugState();
+            return { content: [{ type: 'text' as const, text: result }] };
+        });
+
         // 評估 expression 的 tool。
         this.mcpServer!.registerTool('evaluate_expression', {
             description: 'Powerful runtime expression evaluator: Test hypotheses, check computed values, call methods, or inspect object properties in the live debug context. Goes beyond simple variable inspection - evaluate any valid expression in the target language.',

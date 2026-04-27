@@ -39,6 +39,8 @@ export interface IDebuggingHandler {
     handleGetVariables(args: { scope?: 'local' | 'global' | 'all' }): Promise<string>;
     /** 在 active stack frame 中評估 expression。 */
     handleEvaluateExpression(args: { expression: string }): Promise<string>;
+    /** 立即回傳目前 debug state（不阻塞、不要求 paused）。 */
+    handleGetDebugState(): Promise<string>;
 }
 
 /**
@@ -504,6 +506,24 @@ export class DebuggingHandler implements IDebuggingHandler {
      */
     public async getCurrentDebugState(): Promise<DebugState> {
         return await this.executor.getCurrentDebugState(this.numNextLines);
+    }
+
+    /**
+     * 立即回傳目前 debug state 的 JSON 序列化結果。
+     *
+     * 與 step / continue 等 tool 不同，此方法不要求 session 已 paused，
+     * 也不會阻塞等待 state 改變。AI agent 可以呼叫此 tool 判斷：
+     * - session 是否 attached（sessionActive）
+     * - 是否已停在某個 frame（具備 fileName / currentLine 等 location info）
+     *
+     * 適用於啟動 long-running process（例如 API server）後，agent 想
+     * 主動 polling 目前狀態的場景。
+     *
+     * @returns DebugState 的 JSON 字串；無 active session 時僅含 sessionActive=false。
+     */
+    public async handleGetDebugState(): Promise<string> {
+        const state = await this.executor.getCurrentDebugState(this.numNextLines);
+        return state.toString();
     }
 
     /**
