@@ -127,7 +127,7 @@ export class DebuggingHandler implements IDebuggingHandler {
      */
     public async handleStopDebugging(): Promise<string> {
         try {
-            if (!(await this.executor.hasActiveSession())) {
+            if (!this.executor.isAttached()) {
                 return 'No active debug session to stop';
             }
 
