@@ -277,7 +277,7 @@ export class DebuggingHandler implements IDebuggingHandler {
      */
     public async handleRestart(): Promise<string> {
         try {
-            if (!(await this.executor.hasActiveSession())) {
+            if (!this.executor.isAttached()) {
                 throw new Error('No active debug session to restart');
             }
 
