@@ -516,27 +516,32 @@ export class DebuggingHandler implements IDebuggingHandler {
     }
 
     /**
-     * 等待直到 VS Code 暴露具有 source location 的 active debug session。
+     * 等待直到 VS Code 暴露 attached 的 debug session。
+     *
+     * 此方法只等到 debug adapter 完成 attach，不要求 debugger 已停在
+     * 某個 frame 上。這允許 start_debugging 在啟動沒有 breakpoint 的
+     * long-running process（例如 API server）時可以立即返回，避免無限
+     * polling 直到 timeout。
      *
      * polling 使用 exponential backoff 與 jitter，並在設定的 operation timeout
      * 後停止。
      *
-     * @returns 當 session 在 timeout 前變成 ready 時回傳 true。
+     * @returns 當 session 在 timeout 前完成 attach 時回傳 true。
      */
     private async waitForActiveDebugSession(): Promise<boolean> {
         const baseDelay = 1000; // 從 1 秒開始。
         const maxDelay = 10000; // 上限為 10 秒。
-        
+
         const startTime = Date.now();
         let attempt = 0;
-        
+
         while (Date.now() - startTime < this.timeoutInSeconds * 1000) {
-            if (await this.executor.hasActiveSession()) {
-                logger.info('Debug session is now active!');
+            if (this.executor.isAttached()) {
+                logger.info('Debug session is now attached!');
                 return true;
             }
-            
-            logger.info(`[Attempt ${attempt + 1}] Waiting for debug session to become active...`);
+
+            logger.info(`[Attempt ${attempt + 1}] Waiting for debug session to attach...`);
 
             // 使用 exponential backoff 與 jitter 計算 delay。
             const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);

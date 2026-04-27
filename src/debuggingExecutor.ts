@@ -41,6 +41,8 @@ export interface IDebuggingExecutor {
     clearAllBreakpoints(): void;
     /** 判斷 active session 是否已 ready 可執行 operations。 */
     hasActiveSession(): Promise<boolean>;
+    /** 判斷 VS Code 是否存在 attached 的 debug session（不要求 paused）。 */
+    isAttached(): boolean;
     /** 若存在，回傳 VS Code 的 active debug session。 */
     getActiveSession(): vscode.DebugSession | undefined;
 }
@@ -441,6 +443,20 @@ export class DebuggingExecutor implements IDebuggingExecutor {
             console.log('Session readiness check failed:', error);
             return false;
         }
+    }
+
+    /**
+     * 判斷 VS Code 是否存在 attached 的 debug session。
+     *
+     * 與 hasActiveSession 不同，此方法只檢查 debug session 是否已啟動並
+     * attach 到 debug adapter，不要求 debugger 已停在某個 frame 上。
+     * 適用於只想確認 session lifecycle 的場景，例如剛啟動 long-running
+     * process（API server 等）尚未命中任何 breakpoint 時。
+     *
+     * @returns 當 VS Code 具備 active debug session 時回傳 true。
+     */
+    public isAttached(): boolean {
+        return vscode.debug.activeDebugSession !== undefined;
     }
 
     /**
