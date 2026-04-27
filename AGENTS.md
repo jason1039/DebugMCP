@@ -89,5 +89,6 @@ The `docs/` folder contains two types of documentation:
 |------|---------|
 | `agent-resources/debug_instructions.md` | Core debugging workflow guide for AI agents |
 | `agent-resources/troubleshooting/*.md` | Language-specific debugging tips (Python, JavaScript, Java, C#) |
+| `agent-resources/operations/SKILL.md` | Lifecycle-aware operations skill (entry + dependent docs); covers `get_debug_state` / `wait_for_pause` and long-running process flows |
 
 These resource files are loaded by `DebugMCPServer` and exposed as MCP resources that AI agents can read to learn how to use the debugging tools effectively.

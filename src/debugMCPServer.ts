@@ -81,6 +81,20 @@ export class DebugMCPServer {
             return { content: [{ type: 'text' as const, text: content }] };
         });
 
+        // Operations skill 入口的 tool fallback，給不支援 MCP resources 的 client。
+        // 入口檔本身就是地圖，agent 讀完即知還需要讀哪些 resource URI。
+        this.mcpServer!.registerTool('get_operations_skill', {
+            description: 'Get the entry document of the lifecycle-aware operations skill. ' +
+                'The entry lists dependent resource URIs (lifecycle states, tool reference, workflow guides, troubleshooting) ' +
+                'so an agent can decide which subdocument to read next. ' +
+                'Use this when you need to understand how to combine tools — especially for long-running processes (API servers, workers) ' +
+                'or when start/stop/restart appear to hang. ' +
+                'Clients that support MCP resources can read debugmcp://docs/operations directly instead.',
+        }, async () => {
+            const content = await this.loadMarkdownFile('agent-resources/operations/SKILL.md');
+            return { content: [{ type: 'text' as const, text: content }] };
+        });
+
         // 啟動 debugging 的 tool。
         this.mcpServer!.registerTool('start_debugging', {
             description: 'IMPORTANT DEBUGGING TOOL - Start a debug session for a code file' +
@@ -285,6 +299,74 @@ export class DebugMCPServer {
                 },
                 async (uri: URL) => {
                     const content = await this.loadMarkdownFile(`agent-resources/troubleshooting/${language}.md`);
+                    return {
+                        contents: [{
+                            uri: uri.href,
+                            mimeType: 'text/markdown',
+                            text: content,
+                        }]
+                    };
+                }
+            );
+        });
+
+        // Operations skill：lifecycle-aware 操作說明叢集。
+        // 設計成 entry + dependencies：agent 先讀 entry 取得地圖，再依需要展開讀子文件。
+        const operationsResources: Array<{
+            name: string;
+            slug: string;
+            file: string;
+            description: string;
+        }> = [
+            {
+                name: 'Operations Skill (Entry)',
+                slug: 'operations',
+                file: 'agent-resources/operations/SKILL.md',
+                description: 'Entry point for the lifecycle-aware operations skill. ' +
+                    'Lists the dependent resource URIs an agent should read for tool reference, workflows and troubleshooting.',
+            },
+            {
+                name: 'Lifecycle States',
+                slug: 'operations/lifecycle-states',
+                file: 'agent-resources/operations/lifecycle-states.md',
+                description: 'Explains detached / attached / paused states and the difference between isAttached() and hasActiveSession().',
+            },
+            {
+                name: 'Tool Reference',
+                slug: 'operations/tool-reference',
+                file: 'agent-resources/operations/tool-reference.md',
+                description: 'Per-tool preconditions, blocking behavior and typical outputs for all DebugMCP tools.',
+            },
+            {
+                name: 'Workflow: Standard Debugging',
+                slug: 'operations/workflow-standard',
+                file: 'agent-resources/operations/workflow-standard.md',
+                description: 'Recommended flow when the target program pauses on its own (general bug fix, unit tests, CLI).',
+            },
+            {
+                name: 'Workflow: Long-Running Process',
+                slug: 'operations/workflow-long-running',
+                file: 'agent-resources/operations/workflow-long-running.md',
+                description: 'Recommended flow for API servers / workers that hit breakpoints only after an external event.',
+            },
+            {
+                name: 'Operations Troubleshooting',
+                slug: 'operations/troubleshooting',
+                file: 'agent-resources/operations/troubleshooting.md',
+                description: 'Symptoms and remedies for common stuck scenarios across the operations workflows.',
+            },
+        ];
+
+        operationsResources.forEach(({ name, slug, file, description }) => {
+            this.mcpServer!.registerResource(
+                name,
+                `debugmcp://docs/${slug}`,
+                {
+                    description,
+                    mimeType: 'text/markdown',
+                },
+                async (uri: URL) => {
+                    const content = await this.loadMarkdownFile(file);
                     return {
                         contents: [{
                             uri: uri.href,
