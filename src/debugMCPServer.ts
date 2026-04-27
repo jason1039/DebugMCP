@@ -221,6 +221,17 @@ export class DebugMCPServer {
             return { content: [{ type: 'text' as const, text: result }] };
         });
 
+        // 阻塞等待 debugger 停在某個 frame 的 tool（最多 10 秒，超時回傳警告）。
+        this.mcpServer!.registerTool('wait_for_pause', {
+            description: 'Block until the debugger pauses at a frame (breakpoint hit, exception, or step complete). ' +
+                'Hard-capped at 10 seconds; on timeout, returns the latest state prefixed with a WARNING ' +
+                'so the caller can decide whether to retry or trigger the code path that should hit a breakpoint. ' +
+                'Use this after start_debugging when you expect the debugger to pause due to an external event.',
+        }, async () => {
+            const result = await this.debuggingHandler.handleWaitForPause();
+            return { content: [{ type: 'text' as const, text: result }] };
+        });
+
         // 評估 expression 的 tool。
         this.mcpServer!.registerTool('evaluate_expression', {
             description: 'Powerful runtime expression evaluator: Test hypotheses, check computed values, call methods, or inspect object properties in the live debug context. Goes beyond simple variable inspection - evaluate any valid expression in the target language.',

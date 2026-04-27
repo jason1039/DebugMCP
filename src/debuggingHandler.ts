@@ -41,6 +41,8 @@ export interface IDebuggingHandler {
     handleEvaluateExpression(args: { expression: string }): Promise<string>;
     /** 立即回傳目前 debug state（不阻塞、不要求 paused）。 */
     handleGetDebugState(): Promise<string>;
+    /** 阻塞等待 debug session 停在某個 frame，或直到 session 結束 / timeout。 */
+    handleWaitForPause(): Promise<string>;
 }
 
 /**
@@ -524,6 +526,64 @@ export class DebuggingHandler implements IDebuggingHandler {
     public async handleGetDebugState(): Promise<string> {
         const state = await this.executor.getCurrentDebugState(this.numNextLines);
         return state.toString();
+    }
+
+    /**
+     * 阻塞等待 debug session 停在某個 frame（命中 breakpoint、例外或 step 完成）。
+     *
+     * 為避免 agent 在無事件發生時長時間阻塞，等待硬上限為 10 秒；超過即視為
+     * timeout，回傳最新 state 並在訊息前綴附上 WARNING，由 agent 決定是否
+     * 重新呼叫此 tool 或改用 get_debug_state 主動 polling。
+     *
+     * polling 條件：
+     * - 出現 location info（fileName + currentLine）→ 視為已 paused，回傳當下 state。
+     * - session 已結束（sessionActive=false）→ 立即回傳，避免無限等待。
+     * - 超過 10 秒 → 回傳最新 state 並標註 WARNING。
+     *
+     * 此方法不會主動觸發任何 debug command，只是等待 debugger 自然抵達 paused
+     * 狀態。適合 long-running process 啟動後，由外部事件（如 HTTP request）
+     * 觸發 breakpoint 的工作流程。
+     *
+     * @returns 達成等待條件時 DebugState 的 JSON 字串；timeout 時前綴 WARNING 訊息。
+     */
+    public async handleWaitForPause(): Promise<string> {
+        if (!this.executor.isAttached()) {
+            throw new Error('No active debug session. Start debugging before waiting for pause.');
+        }
+
+        const maxWaitMs = 10_000; // 硬上限 10 秒，避免 agent 長時間卡住。
+        const baseDelay = 500;
+        const maxDelay = 2000;
+        const startTime = Date.now();
+        let attempt = 0;
+
+        while (Date.now() - startTime < maxWaitMs) {
+            const currentState = await this.executor.getCurrentDebugState(this.numNextLines);
+
+            if (currentState.hasLocationInfo()) {
+                logger.info('Debugger paused at frame');
+                return currentState.toString();
+            }
+
+            if (!currentState.sessionActive) {
+                logger.info('Debug session ended while waiting for pause');
+                return currentState.toString();
+            }
+
+            logger.info(`[Attempt ${attempt + 1}] Waiting for debugger to pause...`);
+
+            const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+            const jitteredDelay = delay + Math.random() * 200;
+            await new Promise(resolve => setTimeout(resolve, jitteredDelay));
+            attempt++;
+        }
+
+        logger.info('wait_for_pause timed out, returning latest state');
+        const latest = await this.executor.getCurrentDebugState(this.numNextLines);
+        const warning = `WARNING: wait_for_pause timed out after ${maxWaitMs / 1000}s without the debugger pausing. ` +
+            'The session is still running. Trigger the code path that should hit a breakpoint, ' +
+            'or call wait_for_pause / get_debug_state again.\n';
+        return warning + latest.toString();
     }
 
     /**
